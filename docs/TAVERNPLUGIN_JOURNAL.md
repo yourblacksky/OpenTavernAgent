@@ -104,16 +104,13 @@ TavernAgent 的概率分母都是 256、延迟只有几毫秒——**它更像"�
 
 ### 3.1 环境：两个不明显的坑
 
-**Rust 工具链卡住**。`rustup` 停在 "syncing channel updates"，下载目录里躺着一个 0 字节的临时文件。
-原因：系统走了 `127.0.0.1:7897` 的代理，而 **rustup/cargo 不读 Windows 的代理设置**，只认环境变量。
+**Rust 工具链卡住**。使用代理时，`rustup` 可能停在 "syncing channel updates"。
+排查时应检查下载状态和代理环境变量；rustup/cargo 不会自动继承 Windows 的代理设置，
+需要按实际代理地址设置 `HTTP_PROXY`、`HTTPS_PROXY`。
 
-```powershell
-$env:HTTP_PROXY="http://127.0.0.1:7897"; $env:HTTPS_PROXY="http://127.0.0.1:7897"
-```
-
-**PowerShell 默认编码**。这台机器的 `Get-Content`/`Set-Content` 按 ANSI（GBK）处理，用它改含中文的
-UTF-8 文档会把文件写花（我踩过一次，整份 ALIGNMENT.md 变成乱码）。改文本一律带 `-Encoding UTF8`，
-或者直接用编辑工具。
+**PowerShell 默认编码**。部分 Windows PowerShell 版本的 `Get-Content`/`Set-Content`
+默认使用系统代码页，可能损坏含中文的 UTF-8 文档。读写时显式指定 `-Encoding UTF8`，
+或者使用支持 UTF-8 的编辑工具。
 
 ### 3.2 结构
 

@@ -127,7 +127,7 @@ without playing:
 ```powershell
 # parse a real log into snapshots
 dotnet run -c Release --project tavernplugin\tools\replay -- snapshot `
-    "C:\Program Files (x86)\Hearthstone\Logs\Hearthstone_2026_10_31_17_07_27\Power_old.log" `
+    "<game folder>\Logs\Hearthstone_<timestamp>\Power_old.log" `
     --out tavernplugin\tools\replay\out\snaps.jsonl --every 4000
 
 python tavernplugin\tools\inspect_snaps.py tavernplugin\tools\replay\out\snaps.jsonl

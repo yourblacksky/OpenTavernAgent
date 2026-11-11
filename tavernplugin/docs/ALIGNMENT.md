@@ -150,7 +150,7 @@ foreach (Card card in me.GetBattlefieldZone().GetCards()) {   // 已按位置排
 ```powershell
 # 列出名字匹配的类型
 dotnet run -c Release --project tavernplugin\tools\ilspec -- list `
-  "C:\Program Files (x86)\Hearthstone\Hearthstone_Data\Managed\Assembly-CSharp.dll" 'Bacon'
+  "<game folder>\Hearthstone_Data\Managed\Assembly-CSharp.dll" 'Bacon'
 
 # 看成员 / 反编译整个类型
 dotnet run -c Release --project tavernplugin\tools\ilspec -- members <asm> '^Player$'
@@ -162,7 +162,7 @@ python tavernplugin\tools\inspect_dumps.py
 
 `tools/ilspec` 直接引用 ILSpy 自带的 `ICSharpCode.Decompiler.dll`，不需要 `ilspycmd`，也不联网。
 
-**注意**：本机 PowerShell 的 `Get-Content`/`Set-Content` 默认按 ANSI（GBK）处理，
+**注意**：部分 Windows PowerShell 版本的 `Get-Content`/`Set-Content` 默认使用系统代码页，
 改这些含中文的文件时务必带 `-Encoding UTF8`，否则会把 UTF-8 文本写坏。
 
 
