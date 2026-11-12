@@ -1,0 +1,92 @@
+{
+  "schema_version": 1,
+  "role": "next_experiment_baseline",
+  "selected_recipe": "freeze_mc096",
+  "training_options": {
+    "backend": "cpu",
+    "games": 64,
+    "epochs": 1,
+    "batch": 1024,
+    "lr": 0.0001,
+    "gamma": 1.0,
+    "gae_lambda": 0.96,
+    "gae_within_turn_lambda": null,
+    "hidden": 256,
+    "blocks": 6,
+    "embedding_dim": 32,
+    "activation": "gelu",
+    "residual_scale": 1.0,
+    "head_norm": false,
+    "critic_distribution": false,
+    "critic_health": false,
+    "max_turns": 100,
+    "budgets": {
+      "action_cap": 100,
+      "move_cap": 10,
+      "freeze_cap": 5
+    },
+    "ppo": {
+      "clip_range": 0.2,
+      "value_coef": 0.5,
+      "terminal_value_coef": 0.1,
+      "clip_value_target": false,
+      "health_value_coef": 0.1,
+      "entropy_coef": 0.03,
+      "max_grad_norm": 0.5,
+      "weight_decay": 0.01,
+      "target_kl": 0.02
+    },
+    "policy_rules": {
+      "block_consecutive_freeze": false,
+      "freeze_at_end": true
+    }
+  },
+  "checkpoints": [
+    {
+      "file": "seed400000000.npz",
+      "training_seed": 400000000,
+      "iteration": 3000,
+      "sha256": "b9007e4c85c29ec3d416bf91e1663c0d260295caae8a0fdb248190edfbfdc0df",
+      "bytes": 33312931,
+      "optimizer_step": 322435
+    },
+    {
+      "file": "seed500000000.npz",
+      "training_seed": 500000000,
+      "iteration": 3000,
+      "sha256": "5eb7e4e9eb21da5ebfc21cac667adb4819eaee3197a5c9445ec12e697de4701c",
+      "bytes": 33315928,
+      "optimizer_step": 318816
+    },
+    {
+      "file": "seed600000000.npz",
+      "training_seed": 600000000,
+      "iteration": 3000,
+      "sha256": "6fcf2baf35e88c463ddf4303d572afd9eddf08df3040652eeee8e844cca65f14",
+      "bytes": 33319581,
+      "optimizer_step": 320621
+    },
+    {
+      "file": "seed700000000.npz",
+      "training_seed": 700000000,
+      "iteration": 3000,
+      "sha256": "68d9ed6ecd91668e75c2f2954e03b9671c48a170dac3485b0274a18e6a203710",
+      "bytes": 33329373,
+      "optimizer_step": 319916
+    },
+    {
+      "file": "seed800000000.npz",
+      "training_seed": 800000000,
+      "iteration": 3000,
+      "sha256": "351492218e93aa1fb31979cceb7daea26f3b48c5f77935f64d8b80911086a315",
+      "bytes": 33323299,
+      "optimizer_step": 320596
+    }
+  ],
+  "notes": [
+    "Checkpoint weights are not distributed with source; filenames and hashes identify historical evaluation inputs.",
+    "The manifest covers all five training seeds; no selection of a single best seed.",
+    "Checkpoints include weights, optimizer, RNG and training history.",
+    "No stable3000 win over original5000 was established; this selects the next experimental baseline, not a proven dominant policy."
+  ]
+}

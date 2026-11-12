@@ -1,0 +1,83 @@
+{
+  "schema_version": 1,
+  "role": "historical_reference",
+  "selected_recipe": "original_control",
+  "training_options": {
+    "games": 64,
+    "epochs": 1,
+    "batch": 1024,
+    "lr": 0.0001,
+    "gamma": 1.0,
+    "gae_lambda": 0.95,
+    "hidden": 256,
+    "blocks": 6,
+    "embedding_dim": 32,
+    "activation": "gelu",
+    "residual_scale": 1.0,
+    "head_norm": false,
+    "max_turns": 100,
+    "budgets": {
+      "action_cap": 100,
+      "move_cap": 10,
+      "freeze_cap": 5
+    },
+    "ppo": {
+      "clip_range": 0.2,
+      "value_coef": 0.5,
+      "entropy_coef": 0.03,
+      "max_grad_norm": 0.5,
+      "weight_decay": 0.01,
+      "target_kl": 0.02
+    },
+    "policy_rules": {
+      "block_consecutive_freeze": false
+    }
+  },
+  "checkpoints": [
+    {
+      "file": "seed400000000.npz",
+      "training_seed": 400000000,
+      "iteration": 5000,
+      "sha256": "6e194b6c6ac5e74e2c1c61a99189425f86cda6f54a0c6915822c2a102456e6af",
+      "bytes": 32787651,
+      "optimizer_step": 675283
+    },
+    {
+      "file": "seed500000000.npz",
+      "training_seed": 500000000,
+      "iteration": 5000,
+      "sha256": "6ef51ff2cca9f4f0aae0fde3afb10198e11fdf7f3d8cadac6668dca1894b8586",
+      "bytes": 32788082,
+      "optimizer_step": 670066
+    },
+    {
+      "file": "seed600000000.npz",
+      "training_seed": 600000000,
+      "iteration": 5000,
+      "sha256": "e661700cc29565acc8ac8b892ee614d89d6917a168caeb8b466acb86a2a80ed6",
+      "bytes": 32786700,
+      "optimizer_step": 675514
+    },
+    {
+      "file": "seed700000000.npz",
+      "training_seed": 700000000,
+      "iteration": 5000,
+      "sha256": "905e5b96a9874c3428d1fbde978645068eafcd4e4c327e7356589e6049dae05b",
+      "bytes": 32786314,
+      "optimizer_step": 660163
+    },
+    {
+      "file": "seed800000000.npz",
+      "training_seed": 800000000,
+      "iteration": 5000,
+      "sha256": "dbaa6ea272bd32b3f5309fa24334e89a4f4981a53b789f950363fc40fc776dd0",
+      "bytes": 32787724,
+      "optimizer_step": 663841
+    }
+  ],
+  "notes": [
+    "Checkpoint weights are not distributed with source; filenames and hashes identify historical evaluation inputs.",
+    "The manifest identifies all five original control5000 references by their evaluation-time hashes.",
+    "Original checkpoint metadata predates optional critic/Freeze-and-End fields; omitted options are disabled."
+  ]
+}
