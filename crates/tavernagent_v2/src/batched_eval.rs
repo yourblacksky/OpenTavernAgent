@@ -3,7 +3,7 @@ use crate::{
     backend::Execution,
     diagnostics::GameDiagnostics,
     eval::{GameEvaluation, Opponent},
-    heroes::select_heroes,
+    heroes::select_heroes_where,
     net::PolicyValueNet,
     observation::{Observation, observe_seat_with_rules},
     policy,
@@ -27,9 +27,17 @@ struct Running {
     diagnostics: GameDiagnostics,
 }
 impl Running {
-    fn new(seed: u64, cfg: &RulesConfig, record: bool) -> Result<Self, String> {
+    fn new(
+        seed: u64,
+        cfg: &RulesConfig,
+        rules: PolicyRules,
+        opponent: Opponent,
+        record: bool,
+    ) -> Result<Self, String> {
         let mut game = Game::new(seed, cfg.clone());
-        select_heroes(&mut game, seed)?;
+        select_heroes_where(&mut game, seed, |seat| {
+            !(opponent.is_model(seat) && rules.learn_hero_select)
+        })?;
         let replay = record.then(|| crate::replay::Recorder::new(&game));
         let histories = vec![ActionHistory::default(); game.players.len()];
         Ok(Self {
@@ -185,7 +193,7 @@ pub fn evaluate_recorded(
         let mut games = pool.install(|| {
             chunk
                 .par_iter()
-                .map(|&seed| Running::new(seed, cfg, record))
+                .map(|&seed| Running::new(seed, cfg, rules, opponent, record))
                 .collect::<Result<Vec<_>, _>>()
         })?;
         loop {

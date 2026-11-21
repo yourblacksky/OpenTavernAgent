@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
 use crate::linalg::Mat;
-use crate::net::{N_ACTIONS, Params, PolicyValueNet};
+use crate::net::{Params, PolicyValueNet};
 use crate::policy::Categorical;
 use crate::rollout::Sample;
 
@@ -203,7 +203,7 @@ pub(crate) fn output_gradients(
     config: &crate::net::NetConfig,
     raw_values: &Mat,
 ) -> Result<(Mat, Vec<f32>, LossMetrics), String> {
-    let mut dlogits = Mat::zeros(rows.len(), N_ACTIONS);
+    let mut dlogits = Mat::zeros(rows.len(), config.n_actions());
     let width = config.value_outputs();
     let mut dvalue = vec![0.0; rows.len() * width];
     let mut metrics = LossMetrics::default();
@@ -363,6 +363,12 @@ impl Trainer {
             net,
             optimizer_step: 0,
         }
+    }
+
+    pub fn reset_optimizer(&mut self) {
+        self.m = self.net.p.zeros_like();
+        self.v = self.net.p.zeros_like();
+        self.optimizer_step = 0;
     }
 
     pub fn apply_gradients(

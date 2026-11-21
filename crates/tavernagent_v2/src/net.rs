@@ -47,9 +47,19 @@ pub const ENDED_TURN_FEATURE: usize = o::ENDED_TURN_F;
 const EXCLUDED_GLOBALS: [usize; 3] = [1, 2, 15];
 
 /// Retain raw turn/tier scalars alongside their one-hot encodings and the safety flag.
-/// Historical opponent warbands, extra quests and three redundant global flags are omitted.
+/// Extra quests and three redundant global flags are omitted; historical opponent warbands
+/// are included only when `observe_opponents` is true.
 pub fn input_feature_indices() -> Vec<usize> {
-    (0..OPP_BOARD_FEATURE_START)
+    input_feature_indices_for(false)
+}
+
+pub fn input_feature_indices_for(observe_opponents: bool) -> Vec<usize> {
+    let end = if observe_opponents {
+        o::OBS_FLOATS
+    } else {
+        OPP_BOARD_FEATURE_START
+    };
+    (0..end)
         .filter(|i| !EXCLUDED_GLOBALS.contains(i))
         .filter(|i| !(o::GLOBAL_F + o::QUEST_F..o::GLOBAL_F + o::N_QUESTS * o::QUEST_F).contains(i))
         .chain(std::iter::once(COMBAT_PROTECTED_FEATURE))
@@ -61,17 +71,25 @@ pub const TRINKET_SLOT_START: usize = N_CARD_SLOTS - N_OPP_BOARD_SLOTS - o::N_OP
 pub const OWNED_TRINKET_SLOTS: usize = 2;
 
 /// Keep the first quest, its target reward and the owned-reward slot (three slots).
-/// Also omit Deity, secrets, surplus trinket slots and historical warbands.
+/// Also omit Deity, secrets, surplus trinket slots, and optionally historical warbands.
 pub fn card_slot_indices() -> Vec<usize> {
+    card_slot_indices_for(false)
+}
+
+pub fn card_slot_indices_for(observe_opponents: bool) -> Vec<usize> {
     let quest_start = 1 + a::N_POWERS + 2;
     let secret_start = quest_start + 3 * o::N_QUESTS;
-    (0..N_CARD_SLOTS)
+    let end = if observe_opponents {
+        N_CARD_SLOTS
+    } else {
+        N_CARD_SLOTS - N_OPP_BOARD_SLOTS
+    };
+    (0..end)
         .filter(|&i| {
             i != 3
                 && !(quest_start + 3..secret_start).contains(&i)
                 && !(secret_start..secret_start + o::N_SECRETS).contains(&i)
                 && !(TRINKET_SLOT_START + OWNED_TRINKET_SLOTS..TRINKET_SLOT_START + 8).contains(&i)
-                && i < N_CARD_SLOTS - N_OPP_BOARD_SLOTS
         })
         .collect()
 }
@@ -178,6 +196,12 @@ pub struct NetConfig {
     pub critic_distribution: bool,
     #[serde(default)]
     pub critic_health: bool,
+    /// Include all opponents' last-seen warbands (features + card slots) in network input.
+    #[serde(default)]
+    pub observe_opponents: bool,
+    /// Include board Move (repositioning) actions in the policy head (+49 actions).
+    #[serde(default)]
+    pub enable_move: bool,
 }
 
 impl Default for NetConfig {
@@ -191,11 +215,16 @@ impl Default for NetConfig {
             head_norm: false,
             critic_distribution: false,
             critic_health: false,
+            observe_opponents: false,
+            enable_move: false,
         }
     }
 }
 
 impl NetConfig {
+    pub fn n_actions(&self) -> usize {
+        crate::actions::n_actions(self.enable_move)
+    }
     pub fn value_outputs(&self) -> usize {
         (if self.critic_distribution { 8 } else { 1 }) + usize::from(self.critic_health)
     }
@@ -449,8 +478,9 @@ impl PolicyValueNet {
         if o::OBS_FLOATS != 3235 || N_CARD_SLOTS != 124 {
             return Err("observation schema changed; update the network".into());
         }
-        let input_features = input_feature_indices();
-        let card_slots = card_slot_indices();
+        let input_features = input_feature_indices_for(cfg.observe_opponents);
+        let card_slots = card_slot_indices_for(cfg.observe_opponents);
+        let n_actions = cfg.n_actions();
         let n_cards = db().len() + 1;
         let d = cfg.embedding_dim;
         let h = cfg.hidden;
@@ -466,7 +496,7 @@ impl PolicyValueNet {
             Mat::from_vec(rows, cols, data)
         };
         let he = |fan_in: usize| (2.0 / fan_in as f32).sqrt();
-        let in_dim = ONE_HOT_FEATURES + input_features.len() + card_slots.len() * d + N_ACTIONS;
+        let in_dim = ONE_HOT_FEATURES + input_features.len() + card_slots.len() * d + n_actions;
         let mut tensors = Vec::with_capacity(11 + 6 * cfg.blocks);
         let mut e = randn(n_cards, d, 0.1);
         for v in e.row_mut(0) {
@@ -486,8 +516,8 @@ impl PolicyValueNet {
             tensors.push(Mat::filled(1, h, 1.0));
             tensors.push(Mat::zeros(1, h));
         }
-        tensors.push(randn(h, N_ACTIONS, he(h) * 0.1));
-        tensors.push(Mat::zeros(1, N_ACTIONS));
+        tensors.push(randn(h, n_actions, he(h) * 0.1));
+        tensors.push(Mat::zeros(1, n_actions));
         tensors.push(randn(h, VALUE_HIDDEN, he(h)));
         tensors.push(Mat::zeros(1, VALUE_HIDDEN));
         tensors.push(randn(
@@ -521,6 +551,10 @@ impl PolicyValueNet {
         self.card_slots.len()
     }
 
+    pub fn n_actions(&self) -> usize {
+        self.cfg.n_actions()
+    }
+
     /// Same architecture and configuration, with the given tensors.
     pub fn with_params(&self, p: Params) -> PolicyValueNet {
         PolicyValueNet {
@@ -543,7 +577,7 @@ impl PolicyValueNet {
         row: &mut [f32],
         mut used: Option<&mut Vec<i32>>,
     ) -> Result<(), String> {
-        if x.len() != N_FEATURES || cards.len() != N_CARD_SLOTS || mask.len() != N_ACTIONS {
+        if x.len() != N_FEATURES || cards.len() != N_CARD_SLOTS || mask.len() != self.n_actions() {
             return Err("observation does not match the schema".into());
         }
         let d = self.cfg.embedding_dim;
@@ -744,7 +778,7 @@ impl PolicyValueNet {
         let (wp, bp, wv, bv) = (self.p.wp(), self.p.bp(), self.p.wv(), self.p.bv());
         let mut grads = self.p.zeros_like();
         grads.tensors[wp] = cache.h_final.t_matmul(dlogits);
-        grads.tensors[bp] = Mat::from_vec(1, N_ACTIONS, dlogits.sum_rows());
+        grads.tensors[bp] = Mat::from_vec(1, self.n_actions(), dlogits.sum_rows());
         grads.tensors[wv] = cache.value_hidden.t_matmul(&dvalue);
         grads.tensors[bv] = Mat::from_vec(1, self.cfg.value_outputs(), dvalue.sum_rows());
         let mut dh = dlogits.matmul_t(&p[wp]);

@@ -4,12 +4,43 @@ use taverngym::{Action, Game};
 
 pub const N_POS: usize = engine::N_BOARD;
 pub const N_ACTIONS: usize = engine::A_PLAY + engine::N_HAND * N_POS;
+pub const A_MOVE: usize = N_ACTIONS;
+pub const N_MOVE: usize = engine::N_BOARD * engine::N_BOARD;
+pub const N_ACTIONS_WITH_MOVE: usize = N_ACTIONS + N_MOVE;
+
+pub const fn n_actions(enable_move: bool) -> usize {
+    if enable_move {
+        N_ACTIONS_WITH_MOVE
+    } else {
+        N_ACTIONS
+    }
+}
+
+pub const fn is_move(action: usize) -> bool {
+    action >= A_MOVE && action < N_ACTIONS_WITH_MOVE
+}
 
 /// Resolve against the state *before* applying the action. A compatible occupied
 /// position means Magnetize; an empty or incompatible position means normal Play.
 pub fn engine_action(game: &Game, seat: usize, action: usize) -> Result<Action, &'static str> {
-    if action >= N_ACTIONS {
+    engine_action_with(game, seat, action, false)
+}
+
+pub fn engine_action_with(
+    game: &Game,
+    seat: usize,
+    action: usize,
+    enable_move: bool,
+) -> Result<Action, &'static str> {
+    if action >= n_actions(enable_move) {
         return Err("bad agent action index");
+    }
+    if action >= A_MOVE {
+        let k = action - A_MOVE;
+        return Ok(Action::Move {
+            from: k / N_POS,
+            to: k % N_POS,
+        });
     }
     if action < engine::A_PLAY {
         return Action::decode(action).ok_or("bad agent action index");
@@ -24,9 +55,17 @@ pub fn engine_action(game: &Game, seat: usize, action: usize) -> Result<Action, 
 }
 
 pub fn legal_mask(game: &Game, seat: usize) -> Vec<bool> {
+    legal_mask_with(game, seat, false)
+}
+
+pub fn legal_mask_with(game: &Game, seat: usize, enable_move: bool) -> Vec<bool> {
     let mask = game.legal_mask(seat);
-    (0..N_ACTIONS)
-        .map(|a| mask[engine_action(game, seat, a).unwrap().encode()])
+    (0..n_actions(enable_move))
+        .map(|a| {
+            mask[engine_action_with(game, seat, a, enable_move)
+                .unwrap()
+                .encode()]
+        })
         .collect()
 }
 
@@ -67,7 +106,7 @@ pub(crate) fn apply_with(
         }
         apply(game, seat, Action::EndTurn)
     } else {
-        let engine = engine_action(game, seat, action)?;
+        let engine = engine_action_with(game, seat, action, rules.enable_move)?;
         apply(game, seat, engine)
     }
 }

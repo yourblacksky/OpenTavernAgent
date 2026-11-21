@@ -3,7 +3,7 @@ use crate::{
     arena::{self, ArenaGame},
     backend::Execution,
     diagnostics::GameDiagnostics,
-    heroes::select_heroes,
+    heroes::select_heroes_where,
     net::PolicyValueNet,
     observation::{Observation, observe_seat_with_rules},
     policy,
@@ -22,9 +22,22 @@ struct Running {
     diagnostics: Vec<GameDiagnostics>,
 }
 impl Running {
-    fn new(seed: u64, offset: usize, cfg: &RulesConfig) -> Result<Self, String> {
+    fn new(
+        seed: u64,
+        offset: usize,
+        cfg: &RulesConfig,
+        a_rules: PolicyRules,
+        b_rules: PolicyRules,
+    ) -> Result<Self, String> {
         let mut game = Game::new(seed, cfg.clone());
-        select_heroes(&mut game, seed)?;
+        select_heroes_where(&mut game, seed, |seat| {
+            let rules = if (seat + offset) % 8 < 4 {
+                a_rules
+            } else {
+                b_rules
+            };
+            !rules.learn_hero_select
+        })?;
         Ok(Self {
             game,
             offset,
@@ -107,7 +120,15 @@ pub fn evaluate(
         let mut games = pool.install(|| {
             chunk
                 .par_iter()
-                .map(|&i| Running::new(seeds[i / 2], (i / 2) % 4 + 4 * (i % 2), cfg))
+                .map(|&i| {
+                    Running::new(
+                        seeds[i / 2],
+                        (i / 2) % 4 + 4 * (i % 2),
+                        cfg,
+                        a_rules,
+                        b_rules,
+                    )
+                })
                 .collect::<Result<Vec<_>, _>>()
         })?;
         loop {

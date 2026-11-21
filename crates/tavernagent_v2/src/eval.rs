@@ -9,7 +9,7 @@ use taverngym::{Game, RulesConfig};
 use crate::{
     checkpoint,
     diagnostics::{self, GameDiagnostics},
-    heroes::select_heroes,
+    heroes::select_heroes_where,
     net::PolicyValueNet,
     observation::observe_seat_with_rules,
     policy,
@@ -108,7 +108,9 @@ pub fn play_detailed(
 ) -> Result<GameEvaluation, String> {
     cfg.validate()?;
     let mut game = Game::new(seed, cfg.clone());
-    select_heroes(&mut game, seed)?;
+    select_heroes_where(&mut game, seed, |seat| {
+        !(opponent.is_model(seat) && rules.learn_hero_select)
+    })?;
     let mut rng = game_rng(seed);
     let mut histories = vec![ActionHistory::default(); game.players.len()];
     let mut diagnostics = GameDiagnostics::default();

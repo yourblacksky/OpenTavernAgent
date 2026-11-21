@@ -18,6 +18,14 @@ pub struct PolicyRules {
     #[serde(default)]
     #[arg(long)]
     pub freeze_at_end: bool,
+    /// Expose board Move (repositioning) actions in the policy action space (+49 actions).
+    #[serde(default)]
+    #[arg(long)]
+    pub enable_move: bool,
+    /// Let the policy choose its hero during HeroSelect instead of uniform random selection.
+    #[serde(default)]
+    #[arg(long)]
+    pub learn_hero_select: bool,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -43,6 +51,8 @@ pub struct ActionCounts {
     pub decisions: u64,
     pub freeze_actions: u64,
     pub consecutive_freeze_actions: u64,
+    #[serde(default)]
+    pub move_actions: u64,
 }
 
 impl ActionCounts {
@@ -51,6 +61,8 @@ impl ActionCounts {
         if action == taverngym::actions::A_FREEZE {
             self.freeze_actions += 1;
             self.consecutive_freeze_actions += u64::from(history.follows_freeze(turn));
+        } else if crate::actions::is_move(action) {
+            self.move_actions += 1;
         }
     }
 
@@ -58,6 +70,7 @@ impl ActionCounts {
         self.decisions += other.decisions;
         self.freeze_actions += other.freeze_actions;
         self.consecutive_freeze_actions += other.consecutive_freeze_actions;
+        self.move_actions += other.move_actions;
     }
 }
 

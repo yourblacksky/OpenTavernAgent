@@ -83,6 +83,19 @@ impl CudaNet {
             gpu,
         })
     }
+    pub fn sync_from(&mut self, trainer: &Trainer) -> Result<(), String> {
+        let upload = |p: &Params| {
+            p.tensors
+                .iter()
+                .map(|m| self.gpu.from_f32(m.rows, m.cols, &m.data))
+                .collect::<Result<Vec<_>, _>>()
+        };
+        self.weights = upload(&trainer.net.p)?;
+        self.m = upload(&trainer.m)?;
+        self.v = upload(&trainer.v)?;
+        self.optimizer_step = trainer.optimizer_step;
+        Ok(())
+    }
     fn bias(&self, x: &Matrix, index: usize) -> Result<(), String> {
         self.gpu.launch(
             "bias",
@@ -310,7 +323,7 @@ impl CudaNet {
         let (logits, values, _) = self.forward(net, observations)?;
         Ok((logits, values))
     }
-    fn backward(
+    pub(crate) fn backward(
         &self,
         net: &PolicyValueNet,
         c: &Cache,

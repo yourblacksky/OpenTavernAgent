@@ -37,6 +37,7 @@ fn sample(net: &PolicyValueNet) -> Sample {
         transition: Transition {
             turn: game.turn,
             health: 40.,
+            tier: 1,
             obs,
             action: d.action,
             old_log_prob: d.log_prob,
@@ -459,6 +460,8 @@ fn checkpoint_restores_adam_rng_and_exact_next_update() {
         options: opts,
         shuffle_rng: Pcg64Mcg::seed_from_u64(7),
         history: Vec::new(),
+        effective_lr: None,
+        effective_entropy_coef: None,
     };
     ppo::update(
         &mut trainer,

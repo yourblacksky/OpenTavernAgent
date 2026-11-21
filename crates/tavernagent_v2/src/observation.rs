@@ -142,7 +142,7 @@ pub fn agent_mask_with_rules(
     rules: PolicyRules,
     history: &ActionHistory,
 ) -> Vec<bool> {
-    let mut mask = crate::actions::legal_mask(game, seat);
+    let mut mask = crate::actions::legal_mask_with(game, seat, rules.enable_move);
     let can_freeze = mask[taverngym::actions::A_FREEZE];
     if rules.freeze_at_end {
         // Remove the toggle before must-spend escape detection. Otherwise a free
@@ -156,7 +156,9 @@ pub fn agent_mask_with_rules(
     }
     if mask[A_END_TURN] && game.players[seat].gold >= MUST_SPEND_GOLD {
         mask[A_END_TURN] = false;
-        if !mask.iter().any(|legal| *legal) {
+        // Move is free and cannot spend gold; check whether any non-Move action remains.
+        let non_move = &mask[..crate::actions::N_ACTIONS];
+        if !non_move.iter().any(|legal| *legal) {
             mask[A_END_TURN] = true;
         }
     }

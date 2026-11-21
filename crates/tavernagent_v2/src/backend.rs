@@ -42,6 +42,14 @@ impl Execution {
             }
         }
     }
+    pub fn sync_from(&mut self, trainer: &Trainer) -> Result<(), String> {
+        let _ = trainer;
+        match self {
+            Self::Cpu => Ok(()),
+            #[cfg(feature = "cuda")]
+            Self::Cuda(gpu) => gpu.sync_from(trainer),
+        }
+    }
     pub fn infer(
         &self,
         net: &PolicyValueNet,
@@ -49,7 +57,7 @@ impl Execution {
     ) -> Result<(Mat, Vec<f32>), String> {
         match self {
             Self::Cpu => {
-                let mut logits = Mat::zeros(obs.len(), crate::net::N_ACTIONS);
+                let mut logits = Mat::zeros(obs.len(), net.n_actions());
                 let mut values = Vec::with_capacity(obs.len());
                 for (i, o) in obs.iter().enumerate() {
                     let (l, v) = net.infer_f32(&o.x, &o.cards, &o.mask)?;

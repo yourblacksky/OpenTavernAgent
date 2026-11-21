@@ -1,7 +1,7 @@
 //! Eight distinct checkpoints per table; full rankings for the shared league Elo fitter.
 use crate::{
     checkpoint,
-    heroes::select_heroes,
+    heroes::select_heroes_where,
     net::PolicyValueNet,
     observation::observe_seat_with_rules,
     policy,
@@ -59,7 +59,9 @@ pub fn play(
         return Err("league requires eight valid seats".into());
     }
     let mut game = Game::new(seed, cfg.clone());
-    select_heroes(&mut game, seed)?;
+    select_heroes_where(&mut game, seed, |seat| {
+        !models[table[seat]].rules.learn_hero_select
+    })?;
     let mut rng = game_rng(seed);
     let mut histories = [ActionHistory::default(); 8];
     while !game.is_over() {

@@ -2,7 +2,7 @@
 use crate::{
     checkpoint,
     diagnostics::{self, GameDiagnostics},
-    heroes::select_heroes,
+    heroes::select_heroes_where,
     net::PolicyValueNet,
     observation::observe_seat_with_rules,
     policy,
@@ -69,7 +69,14 @@ pub fn play(
     }
     let is_candidate = |seat: usize| (seat + offset) % 8 < 4;
     let mut game = Game::new(seed, cfg.clone());
-    select_heroes(&mut game, seed)?;
+    select_heroes_where(&mut game, seed, |seat| {
+        let rules = if is_candidate(seat) {
+            candidate_rules
+        } else {
+            reference_rules
+        };
+        !rules.learn_hero_select
+    })?;
     let mut rng = game_rng(seed);
     let mut histories = [ActionHistory::default(); 8];
     let mut diagnostics = vec![GameDiagnostics::default(); 8];

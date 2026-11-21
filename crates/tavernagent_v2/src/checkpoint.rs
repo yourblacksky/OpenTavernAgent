@@ -22,6 +22,12 @@ pub struct RunState {
     pub options: TrainOptions,
     pub shuffle_rng: Pcg64Mcg,
     pub history: Vec<serde_json::Value>,
+    /// Runtime-adapted learning rate when `--adaptive-kl` or collapse rollback is active.
+    #[serde(default)]
+    pub effective_lr: Option<f64>,
+    /// Runtime-adapted entropy coefficient when `--min-entropy` is active.
+    #[serde(default)]
+    pub effective_entropy_coef: Option<f64>,
 }
 
 #[derive(Serialize, Deserialize)]

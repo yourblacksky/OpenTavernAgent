@@ -1,21 +1,42 @@
 //! Complete, unsplit games from a fixed policy; each seat owns its own trajectory.
 
-use rand::SeedableRng;
+use rand::{Rng, SeedableRng};
 use rand_pcg::Pcg64Mcg;
 use rayon::prelude::*;
 use taverngym::{Game, RulesConfig};
 
 use crate::gae::{self, ValueStep};
-use crate::heroes::select_heroes;
+use crate::heroes::select_heroes_where;
 use crate::net::PolicyValueNet;
 use crate::observation::{Observation, observe_seat_with_rules};
 use crate::policy;
 use crate::rules::{ActionCounts, ActionHistory, PolicyRules};
 
+/// Potential-based reward shaping coefficients: F(s, s') = gamma * Phi(s') - Phi(s),
+/// with Phi(s_terminal) = 0 so the optimal policy is preserved (Ng et al. 1999).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct RewardShaping {
+    pub health_coef: f32,
+    pub tier_coef: f32,
+}
+
+impl RewardShaping {
+    pub fn is_active(self) -> bool {
+        self.health_coef != 0.0 || self.tier_coef != 0.0
+    }
+
+    pub fn potential(self, health: f32, tier: u8) -> f32 {
+        let h = (health / 40.0).clamp(0.0, 1.0);
+        let t = (tier.saturating_sub(1) as f32 / 5.0).clamp(0.0, 1.0);
+        self.health_coef * h + self.tier_coef * t
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct Transition {
     pub turn: u32,
     pub health: f32,
+    pub tier: u8,
     pub obs: Observation,
     pub action: usize,
     pub old_log_prob: f64,
@@ -30,6 +51,8 @@ pub struct Trajectory {
     pub seat: usize,
     pub placement: u8,
     pub terminal_health: f32,
+    /// True when this seat was controlled by the current learning policy (on-policy).
+    pub is_learner: bool,
     pub steps: Vec<Transition>,
 }
 
@@ -53,6 +76,16 @@ impl Trajectory {
         lambda: f32,
         within_turn_lambda: Option<f32>,
     ) -> Result<Vec<Sample>, String> {
+        self.into_samples_with_shaping(gamma, lambda, within_turn_lambda, RewardShaping::default())
+    }
+
+    pub fn into_samples_with_shaping(
+        self,
+        gamma: f32,
+        lambda: f32,
+        within_turn_lambda: Option<f32>,
+        shaping: RewardShaping,
+    ) -> Result<Vec<Sample>, String> {
         if let Some(last) = self.steps.last()
             && (!last.terminated
                 || self.steps[..self.steps.len() - 1]
@@ -61,13 +94,35 @@ impl Trajectory {
         {
             return Err("complete trajectory must end in exactly one terminal transition".into());
         }
+        let shaping_active = shaping.is_active();
+        let potentials: Vec<f32> = if shaping_active {
+            self.steps
+                .iter()
+                .map(|s| shaping.potential(s.health, s.tier))
+                .collect()
+        } else {
+            Vec::new()
+        };
         let values: Vec<_> = self
             .steps
             .iter()
-            .map(|s| ValueStep {
-                value: s.old_value,
-                reward: s.reward,
-                terminated: s.terminated,
+            .enumerate()
+            .map(|(i, s)| {
+                let shaped_reward = if shaping_active {
+                    let phi_next = if s.terminated || i + 1 >= potentials.len() {
+                        0.0
+                    } else {
+                        potentials[i + 1]
+                    };
+                    s.reward + gamma * phi_next - potentials[i]
+                } else {
+                    s.reward
+                };
+                ValueStep {
+                    value: s.old_value,
+                    reward: shaped_reward,
+                    terminated: s.terminated,
+                }
             })
             .collect();
         let terminal_reward = self.steps.last().map_or(0.0, |s| s.reward);
@@ -147,15 +202,49 @@ pub fn collect_game(
     collect_game_with_rules(net, seed, cfg, PolicyRules::default())
 }
 
+/// Assign each seat either `None` (current learning policy) or `Some(idx)` into `opponents`.
+/// Seat 0 is always the current learning policy so every game produces on-policy samples.
+pub fn assign_opponent_seats(
+    seed: u64,
+    num_players: usize,
+    pool_len: usize,
+    pool_prob: f64,
+) -> Vec<Option<usize>> {
+    let mut assigned = vec![None; num_players];
+    if pool_len == 0 || pool_prob <= 0.0 {
+        return assigned;
+    }
+    let mut rng = Pcg64Mcg::seed_from_u64(seed ^ 0x4F50_5050);
+    for slot in assigned.iter_mut().skip(1) {
+        if rng.random::<f64>() < pool_prob {
+            *slot = Some(rng.random_range(0..pool_len));
+        }
+    }
+    assigned
+}
+
 pub fn collect_game_with_rules(
     net: &PolicyValueNet,
     seed: u64,
     cfg: &RulesConfig,
     rules: PolicyRules,
 ) -> Result<GameRollout, String> {
+    collect_game_with_pool(net, &[], 0.0, seed, cfg, rules)
+}
+
+pub fn collect_game_with_pool(
+    net: &PolicyValueNet,
+    opponents: &[PolicyValueNet],
+    pool_prob: f64,
+    seed: u64,
+    cfg: &RulesConfig,
+    rules: PolicyRules,
+) -> Result<GameRollout, String> {
     cfg.validate()?;
     let mut game = Game::new(seed, cfg.clone());
-    select_heroes(&mut game, seed)?;
+    select_heroes_where(&mut game, seed, |_| !rules.learn_hero_select)?;
+    let seat_opponents =
+        assign_opponent_seats(seed, game.players.len(), opponents.len(), pool_prob);
     let mut rng = game_rng(seed);
     let mut histories = vec![ActionHistory::default(); game.players.len()];
     let mut actions = ActionCounts::default();
@@ -165,6 +254,7 @@ pub fn collect_game_with_rules(
             seat,
             placement: 0,
             terminal_health: 0.0,
+            is_learner: seat_opponents[seat].is_none(),
             steps: Vec::new(),
         })
         .collect();
@@ -180,24 +270,32 @@ pub fn collect_game_with_rules(
             }
             let turn = game.turn;
             let health = (game.players[seat].health + game.players[seat].armor).max(0) as f32;
+            let tier = game.players[seat].tier;
             let obs = observe_seat_with_rules(&game, seat, rules, &histories[seat]);
-            let decision = policy::decide(net, &obs, &mut rng, false)
+            let seat_net = match seat_opponents[seat] {
+                Some(idx) => &opponents[idx],
+                None => net,
+            };
+            let decision = policy::decide(seat_net, &obs, &mut rng, false)
                 .map_err(|e| format!("seed={seed}, seat={seat}, turn={}: {e}", game.turn))?;
             crate::actions::apply_with_rules(&mut game, seat, decision.action, rules).map_err(
                 |e| format!("seed={seed}, seat={seat}, action={}: {e}", decision.action),
             )?;
             actions.record(&histories[seat], turn, decision.action);
             histories[seat].record(turn, decision.action);
-            trajectory.steps.push(Transition {
-                turn,
-                health,
-                obs,
-                action: decision.action,
-                old_log_prob: decision.log_prob,
-                old_value: decision.value,
-                reward: 0.0,
-                terminated: false,
-            });
+            if trajectory.is_learner {
+                trajectory.steps.push(Transition {
+                    turn,
+                    health,
+                    tier,
+                    obs,
+                    action: decision.action,
+                    old_log_prob: decision.log_prob,
+                    old_value: decision.value,
+                    reward: 0.0,
+                    terminated: false,
+                });
+            }
             acted = true;
         }
         if !acted {
@@ -254,11 +352,23 @@ pub fn collect_with_rules(
     pool: &rayon::ThreadPool,
     rules: PolicyRules,
 ) -> Result<Vec<GameRollout>, String> {
+    collect_with_pool(net, &[], 0.0, seeds, cfg, pool, rules)
+}
+
+pub fn collect_with_pool(
+    net: &PolicyValueNet,
+    opponents: &[PolicyValueNet],
+    pool_prob: f64,
+    seeds: &[u64],
+    cfg: &RulesConfig,
+    pool: &rayon::ThreadPool,
+    rules: PolicyRules,
+) -> Result<Vec<GameRollout>, String> {
     // Indexed collection and a separate RNG per game keep results independent of workers.
     pool.install(|| {
         seeds
             .par_iter()
-            .map(|&s| collect_game_with_rules(net, s, cfg, rules))
+            .map(|&s| collect_game_with_pool(net, opponents, pool_prob, s, cfg, rules))
             .collect()
     })
 }

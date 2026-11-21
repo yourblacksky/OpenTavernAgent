@@ -18,12 +18,14 @@ fn trajectory(turns: &[u32]) -> Trajectory {
         seat: 0,
         placement: 1,
         terminal_health: 40.,
+        is_learner: true,
         steps: turns
             .iter()
             .enumerate()
             .map(|(i, &turn)| Transition {
                 turn,
                 health: 40.,
+                tier: 1,
                 obs: Observation {
                     x: vec![],
                     cards: vec![],
